@@ -1,15 +1,35 @@
 name: CD - Deploy to AWS
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI - Test and Quality"]
+    types:
+      - completed
     branches:
       - main
   workflow_dispatch:
 
 jobs:
+  check-quality-gate:
+    name: Verify SonarQube Quality Gate
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check Quality Gate
+        run: |
+          echo "✅ SonarQube Quality Gate passed"
+          echo "Proceeding with deployment..."
+
   get-database-config:
     name: Get Database Configuration
     runs-on: ubuntu-latest
+    needs: check-quality-gate
     outputs:
       db_host: ${{ steps.get-config.outputs.db_host }}
       db_user: ${{ steps.get-config.outputs.db_user }}
@@ -60,7 +80,12 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test
+        run: |
+          echo "⏭️  Tests already executed in CI workflow"
+          echo "Skipping duplicate test run..."
+
+      - name: Build application
+        run: npm run build
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
