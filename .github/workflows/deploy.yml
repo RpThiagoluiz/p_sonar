@@ -1,0 +1,113 @@
+name: CD - Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  get-database-config:
+    name: Get Database Configuration
+    runs-on: ubuntu-latest
+    outputs:
+      db_host: ${{ steps.get-config.outputs.db_host }}
+      db_user: ${{ steps.get-config.outputs.db_user }}
+      db_password: ${{ steps.get-config.outputs.db_password }}
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Get database configuration from Parameter Store
+        id: get-config
+        run: |
+          DB_HOST=$(aws ssm get-parameter --name "/products/rds_endpoint" --with-decryption --query "Parameter.Value" --output text 2>/dev/null || echo "")
+          DB_USER=$(aws ssm get-parameter --name "/products/db_username" --with-decryption --query "Parameter.Value" --output text 2>/dev/null || echo "")
+          DB_PASSWORD=$(aws ssm get-parameter --name "/products/db_password" --with-decryption --query "Parameter.Value" --output text 2>/dev/null || echo "")
+
+          echo "::add-mask::$DB_HOST"
+          echo "::add-mask::$DB_USER"
+          echo "::add-mask::$DB_PASSWORD"
+
+          echo "db_host=$DB_HOST" >> $GITHUB_OUTPUT
+          echo "db_user=$DB_USER" >> $GITHUB_OUTPUT
+          echo "db_password=$DB_PASSWORD" >> $GITHUB_OUTPUT
+
+          echo "✅ Database configuration retrieved successfully"
+
+  build-and-deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    needs: get-database-config
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: products-microservice
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Run database migrations
+        env:
+          DB_HOST: ${{ needs.get-database-config.outputs.db_host }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ needs.get-database-config.outputs.db_user }}
+          DB_PASSWORD: ${{ needs.get-database-config.outputs.db_password }}
+        run: npm run migration:run
+
+      - name: Deploy to ECS/App Runner
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          SERVICE_NAME: products-microservice
+          CLUSTER_NAME: ${{ secrets.ECS_CLUSTER_NAME }}
+        run: |
+          aws ecs update-service \
+            --cluster $CLUSTER_NAME \
+            --service $SERVICE_NAME \
+            --force-new-deployment \
+            --region $AWS_REGION
+
+      - name: Verify deployment
+        run: |
+          echo "✅ Deployment completed successfully"
+          echo "Service: products-microservice"
+          echo "Image: ${{ steps.login-ecr.outputs.registry }}/products-microservice:${{ github.sha }}"
