@@ -11,6 +11,7 @@ describe('Product Entity', () => {
         price: 10.99,
         categoryId: '456',
         available: true,
+        prepTime: 15,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -26,6 +27,7 @@ describe('Product Entity', () => {
         price: 10.99,
         categoryId: '456',
         available: true,
+        prepTime: 15,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -41,6 +43,7 @@ describe('Product Entity', () => {
         price: 0,
         categoryId: '456',
         available: true,
+        prepTime: 15,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -56,6 +59,23 @@ describe('Product Entity', () => {
         price: 10.99,
         categoryId: '',
         available: true,
+        prepTime: 15,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      expect(product.isValid()).toBe(false);
+    });
+
+    it('should return false for product with zero prepTime', () => {
+      const product = new Product({
+        id: '123',
+        name: 'Test Product',
+        description: 'Test Description',
+        price: 10.99,
+        categoryId: '456',
+        available: true,
+        prepTime: 0,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -73,6 +93,7 @@ describe('Product Entity', () => {
         price: 10.99,
         categoryId: '456',
         available: true,
+        prepTime: 15,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -93,6 +114,7 @@ describe('Product Entity', () => {
         price: 10.99,
         categoryId: '456',
         available: true,
+        prepTime: 15,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -111,6 +133,7 @@ describe('Product Entity', () => {
         price: 10.99,
         categoryId: '456',
         available: true,
+        prepTime: 15,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -127,6 +150,7 @@ describe('Product Entity', () => {
         price: 10.99,
         categoryId: '456',
         available: false,
+        prepTime: 15,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -143,6 +167,7 @@ describe('Product Entity', () => {
         price: 10.99,
         categoryId: '456',
         available: true,
+        prepTime: 15,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
